@@ -1,0 +1,7 @@
+crisis_severity,social_influence,informed_people,rounds_completed,continue_normal_activity,prepare,seek_information,evacuate
+0.3,False,13,6,100,,,
+0.3,True,13,6,100,,,
+0.6,False,13,6,56,44.0,,
+0.6,True,13,6,61,39.0,,
+0.9,False,13,6,31,40.0,16.0,13.0
+0.9,True,51,20,21,25.0,26.0,28.0
