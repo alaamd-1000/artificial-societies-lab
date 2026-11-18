@@ -615,66 +615,137 @@ print("Reports saved in: outputs/reports/")
 
 
 # --------------------------------------------------
-# 14. Sensitivity Analysis with Multiple Replications
+# 14. Sensitivity Analysis Across Different Time Horizons
 # --------------------------------------------------
 
-print("\nSTARTING MULTIPLE REPLICATIONS")
+print("\nSTARTING SENSITIVITY ANALYSIS")
 
 transmission_values = [0.1, 0.3, 0.5, 0.7]
 
 social_strength_values = [0.1, 0.3, 0.5, 0.7]
 
+round_limits = [20, 40, 60]
+
 seeds = list(range(42, 52))
 
 replication_results = []
 
-for transmission in transmission_values:
+for max_rounds in round_limits:
 
-    for strength in social_strength_values:
+    for transmission in transmission_values:
 
-        for seed in seeds:
+        for strength in social_strength_values:
 
-            # Create a fresh institution for every experiment
-            fresh_institution = create_institution()
+            for seed in seeds:
 
-            # Create a fresh simulation engine
-            sensitivity_engine = SimulationEngine(
-                community,
-                network,
-                fresh_institution
-            )
+                fresh_institution = create_institution()
 
-            result = sensitivity_engine.run(
-                crisis_severity=0.9,
-                source_person_id=1,
-                social_influence=True,
-                social_influence_strength=strength,
-                transmission_probability=transmission,
-                max_rounds=20,
-                seed=seed
-            )
+                sensitivity_engine = SimulationEngine(
+                    community,
+                    network,
+                    fresh_institution
+                )
 
-            final_round = result["round_history"][-1]
+                result = sensitivity_engine.run(
+                    crisis_severity=0.9,
+                    source_person_id=1,
+                    social_influence=True,
+                    social_influence_strength=strength,
+                    transmission_probability=transmission,
+                    max_rounds=max_rounds,
+                    seed=seed
+                )
 
-            replication_results.append({
-                "transmission_probability": transmission,
-                "social_influence_strength": strength,
-                "seed": seed,
-                "informed_people": result["informed_people"],
-                "evacuate": result["decisions"].get("evacuate", 0),
-                "prepare": result["decisions"].get("prepare", 0),
-                "seek_information": result["decisions"].get(
-                    "seek_information", 0
-                ),
-                "continue_normal_activity": result["decisions"].get(
-                    "continue_normal_activity", 0
-                ),
-                "average_risk_perception": final_round[
-                    "average_risk_perception"
-                ],
-                "rounds_completed": result["rounds_completed"],
-                "resources_remaining": fresh_institution.resources
-            })
+                final_round = result["round_history"][-1]
+
+                replication_results.append({
+                    "max_rounds": max_rounds,
+                    "transmission_probability": transmission,
+                    "social_influence_strength": strength,
+                    "seed": seed,
+                    "informed_people": result["informed_people"],
+                    "evacuate": result["decisions"].get("evacuate", 0),
+                    "prepare": result["decisions"].get("prepare", 0),
+                    "seek_information": result["decisions"].get(
+                        "seek_information", 0
+                    ),
+                    "continue_normal_activity": result["decisions"].get(
+                        "continue_normal_activity", 0
+                    ),
+                    "average_risk_perception": final_round[
+                        "average_risk_perception"
+                    ],
+                    "rounds_completed": result["rounds_completed"],
+                    "resources_remaining": fresh_institution.resources
+                })
+
+
+# --------------------------------------------------
+# 15. Save and Summarize Replication Results
+# --------------------------------------------------
+
+replications_df = pd.DataFrame(replication_results)
+
+os.makedirs("outputs/reports", exist_ok=True)
+
+replications_df.to_csv(
+    "outputs/reports/horizon_sensitivity_replications.csv",
+    index=False
+)
+
+metrics = [
+    "informed_people",
+    "evacuate",
+    "prepare",
+    "seek_information",
+    "continue_normal_activity",
+    "average_risk_perception",
+    "rounds_completed",
+    "resources_remaining"
+]
+
+sensitivity_summary = (
+    replications_df
+    .groupby([
+        "max_rounds",
+        "transmission_probability",
+        "social_influence_strength"
+    ])[metrics]
+    .agg(["mean", "std"])
+)
+
+sensitivity_summary.to_csv(
+    "outputs/reports/horizon_sensitivity_summary.csv"
+)
+
+print("\nHORIZON SENSITIVITY ANALYSIS COMPLETED")
+print("Total experiments:", len(replications_df))
+print("Round limits:", round_limits)
+print("Replications per combination:", len(seeds))
+
+print("\nMEAN INFORMED PEOPLE BY TIME HORIZON:")
+
+print(
+    replications_df
+    .groupby([
+        "max_rounds",
+        "transmission_probability"
+    ])["informed_people"]
+    .agg(["mean", "min", "max"])
+    .round(2)
+)
+
+print("\nMEAN COMPLETED ROUNDS:")
+
+print(
+    replications_df
+    .groupby("max_rounds")["rounds_completed"]
+    .agg(["mean", "min", "max"])
+)
+
+print("\nFILES SAVED:")
+print("outputs/reports/horizon_sensitivity_replications.csv")
+print("outputs/reports/horizon_sensitivity_summary.csv")
 
 
 # --------------------------------------------------
@@ -776,26 +847,25 @@ experiment_config = {
     "population_size": len(people),
     "household_count": community.household_count,
     "household_size": household_size,
-    "initial_crisis_severity": 0.9,
+    "crisis_severity": 0.9,
     "source_person_id": 1,
     "social_influence": True,
     "transmission_probabilities": transmission_values,
     "social_influence_strengths": social_strength_values,
+    "maximum_rounds_tested": round_limits,
     "random_seeds": seeds,
     "replications_per_combination": len(seeds),
     "total_replications": len(replications_df),
-    "maximum_rounds": 20,
     "institution_initial_resources": 1000,
     "institution_response_capacity": 30,
     "institution_trust_level": 0.8
 }
 
 with open(
-    "outputs/reports/experiment_configuration.json",
+    "outputs/reports/horizon_sensitivity_configuration.json",
     "w",
     encoding="utf-8"
 ) as file:
-
     json.dump(
         experiment_config,
         file,

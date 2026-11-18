@@ -32,6 +32,11 @@ class SimulationEngine:
         if not people:
             raise ValueError("The community has no people.")
 
+        if not 0 <= crisis_severity <= 1:
+            raise ValueError(
+                "crisis_severity must be between 0 and 1."
+            )
+
         if max_rounds < 1:
             raise ValueError("max_rounds must be at least 1.")
 
@@ -39,6 +44,19 @@ class SimulationEngine:
             person.person_id: person
             for person in people
         }
+
+        community_person_ids = set(people_by_id.keys())
+        network_person_ids = set(self.network.graph.nodes)
+
+        missing_person_ids = (
+            community_person_ids - network_person_ids
+        )
+
+        if missing_person_ids:
+            raise ValueError(
+                "Some community members are missing from the "
+                f"social network: {sorted(missing_person_ids)}"
+            )
 
         if source_person_id not in people_by_id:
             raise ValueError("Source person does not exist.")
@@ -53,7 +71,6 @@ class SimulationEngine:
                 "social_influence_strength must be between 0 and 1."
             )
 
-        # Save original risk perceptions.
         original_perceptions = {
             person.person_id: person.risk_perception
             for person in people
@@ -65,10 +82,8 @@ class SimulationEngine:
             crisis_severity
         )
 
-        # Initially, only the source person is informed.
         informed = {source_person_id}
 
-        # Initial decisions before the first round.
         previous_decisions = {
             person.person_id: person.make_decision(
                 crisis_severity
@@ -79,44 +94,25 @@ class SimulationEngine:
         round_history = []
 
         try:
-
-            # Start the simulation rounds.
             for round_number in range(1, max_rounds + 1):
-
-                # 1. Spread warning through the social network.
                 newly_informed = set()
 
                 for person_id in sorted(informed):
-
-                    neighbors = self.network.get_neighbors(
-                        person_id
-                    )
+                    neighbors = self.network.get_neighbors(person_id)
 
                     for neighbor_id in neighbors:
-
                         if neighbor_id not in informed:
-                            if (
-                                rng.random()
-                                < transmission_probability
-                            ):
+                            if rng.random() < transmission_probability:
                                 newly_informed.add(neighbor_id)
 
                 informed.update(newly_informed)
 
-                # 2. Calculate new risk perceptions.
                 updated_perceptions = {}
 
                 for person in people:
+                    current_perception = person.risk_perception
 
-                    current_perception = (
-                        person.risk_perception
-                    )
-
-                    if (
-                        social_influence
-                        and person.person_id in informed
-                    ):
-
+                    if social_influence and person.person_id in informed:
                         neighbors = self.network.get_neighbors(
                             person.person_id
                         )
@@ -136,20 +132,16 @@ class SimulationEngine:
                                 social_influence_strength
                             )
                         )
-
                     else:
                         updated_perceptions[person.person_id] = (
                             current_perception
                         )
 
-                # 3. Apply perception updates simultaneously.
                 for person in people:
-
                     person.risk_perception = (
                         updated_perceptions[person.person_id]
                     )
 
-                # 4. Calculate decisions for this round.
                 current_decisions = {
                     person.person_id: person.make_decision(
                         crisis_severity
@@ -162,11 +154,9 @@ class SimulationEngine:
                 )
 
                 average_risk = sum(
-                    person.risk_perception
-                    for person in people
+                    person.risk_perception for person in people
                 ) / len(people)
 
-                # 5. Store round results.
                 round_result = {
                     "round": round_number,
                     "informed_people": len(informed),
@@ -177,24 +167,24 @@ class SimulationEngine:
                 }
 
                 round_history.append(round_result)
-
-                # 6. Stop when information and decisions stabilize.
-                if (
-                    not newly_informed
-                    and current_decisions == previous_decisions
-                ):
-                    break
-
                 previous_decisions = current_decisions
 
-            # Final decisions.
+                remaining_possible_contacts = any(
+                    any(
+                        neighbor_id not in informed
+                        for neighbor_id in self.network.get_neighbors(
+                            person_id
+                        )
+                    )
+                    for person_id in informed
+                )
+
+                if not remaining_possible_contacts:
+                    break
+
             final_decisions = round_history[-1]["decisions"]
+            evacuation_count = final_decisions.get("evacuate", 0)
 
-            evacuation_count = final_decisions.get(
-                "evacuate", 0
-            )
-
-            # 7. Save individual responses.
             final_individual_responses = [
                 {
                     "person_id": person.person_id,
@@ -203,19 +193,15 @@ class SimulationEngine:
                     ],
                     "updated_risk_perception": person.risk_perception,
                     "preparedness": person.preparedness,
-                    "decision": person.make_decision(
-                        crisis_severity
-                    )
+                    "decision": person.make_decision(crisis_severity)
                 }
                 for person in people
             ]
 
-            # 8. Calculate institutional support.
             support = self.institution.provide_support(
                 evacuation_count
             )
 
-            # 9. Build final experiment result.
             result = {
                 "crisis_severity": crisis_severity,
                 "warning": warning,
@@ -232,16 +218,12 @@ class SimulationEngine:
             }
 
             self.results.append(result)
-
             self.data_collector.collect(result)
 
             return result
 
         finally:
-
-            # Restore original perceptions after the experiment.
             for person in people:
-
                 person.risk_perception = (
                     original_perceptions[person.person_id]
                 )

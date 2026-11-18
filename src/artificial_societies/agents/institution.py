@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 
 
@@ -11,15 +10,18 @@ class InstitutionAgent:
     trust_level: float
 
     def provide_support(self, requested_people: int) -> dict:
-        supported_people = min(
-            requested_people,
-            self.response_capacity
+        affordable_people = max(0, int(self.resources // 2))
+
+        supported_people = max(
+            0,
+            min(
+                requested_people,
+                self.response_capacity,
+                affordable_people
+            )
         )
 
-        resources_used = min(
-            self.resources,
-            supported_people * 2
-        )
+        resources_used = supported_people * 2
 
         self.resources -= resources_used
 
